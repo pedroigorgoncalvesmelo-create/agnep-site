@@ -1,0 +1,381 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * AGNEP Design System — v2 Balanced
+ * Harmonia entre dourado e azul marinho.
+ * Not too dry, not too busy — clean with warmth.
+ */
+
+@theme inline {
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+
+  --color-brand-red: var(--brand-red);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-gold: var(--brand-gold);
+  --color-brand-warm: var(--brand-warm);
+  --color-surface-elevated: var(--surface-elevated);
+}
+
+:root {
+  --radius: 0.25rem;
+
+  /* Brand — Gold primary, navy secondary, red accent */
+  --brand-red: oklch(0.56 0.22 27);
+  --brand-navy: oklch(0.22 0.05 260);
+  --brand-gold: oklch(0.72 0.14 80);
+  --brand-warm: oklch(0.65 0.12 60);
+  --surface-elevated: oklch(1 0 0);
+
+  /* Background: warm off-white, not cold gray */
+  --background: oklch(0.983 0.004 80);
+  --foreground: oklch(0.16 0.02 260);
+
+  --card: oklch(0.994 0.003 80);
+  --card-foreground: oklch(0.16 0.02 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.16 0.02 260);
+
+  /* Primary: warm gold — matches chess board tones */
+  --primary: oklch(0.68 0.14 72);
+  --primary-foreground: oklch(0.16 0.02 260);
+
+  --secondary: oklch(0.22 0.05 260);
+  --secondary-foreground: oklch(0.99 0 0);
+
+  --muted: oklch(0.96 0.006 80);
+  --muted-foreground: oklch(0.46 0.03 260);
+
+  --accent: oklch(0.95 0.008 72);
+  --accent-foreground: oklch(0.22 0.05 260);
+
+  --destructive: oklch(0.56 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.22 0.05 260 / 0.10);
+  --input: oklch(0.22 0.05 260 / 0.12);
+  --ring: oklch(0.68 0.14 72 / 0.40);
+
+  /* Balanced gradients — gold warmth + navy depth */
+  --gradient-brand: radial-gradient(circle at 15% 30%, oklch(0.68 0.14 72 / 0.20), transparent 55%),
+    radial-gradient(circle at 85% 80%, oklch(0.22 0.05 260 / 0.08), transparent 60%);
+  --gradient-brand-soft: radial-gradient(circle at 10% 20%, oklch(0.68 0.14 72 / 0.04), transparent 55%),
+    radial-gradient(circle at 90% 90%, oklch(0.22 0.05 260 / 0.04), transparent 60%),
+    radial-gradient(circle at 50% 50%, oklch(0.56 0.22 27 / 0.03), transparent 70%);
+  --shadow-brand: 0 16px 40px -16px oklch(0.22 0.05 260 / 0.25);
+  --shadow-brand-gold: 0 8px 30px -8px oklch(0.68 0.14 72 / 0.30);
+  --shadow-brand-red: 0 8px 30px -8px oklch(0.56 0.22 27 / 0.30);
+}
+
+.dark {
+  --background: oklch(0.15 0.02 260);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.19 0.03 260);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.19 0.03 260);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.72 0.14 72);
+  --primary-foreground: oklch(0.16 0.02 260);
+  --secondary: oklch(0.28 0.04 260);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.25 0.03 260);
+  --muted-foreground: oklch(0.7 0.02 260);
+  --accent: oklch(0.28 0.04 260);
+  --accent-foreground: oklch(0.98 0 0);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.15);
+  --ring: oklch(0.72 0.14 72 / 0.5);
+  --surface-elevated: oklch(0.19 0.03 260);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  ::selection {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+}
+
+@utility container-page {
+  @apply mx-auto w-full max-w-7xl px-6 lg:px-8;
+}
+
+@utility eyebrow {
+  @apply font-mono text-xs font-bold uppercase tracking-[0.2em] text-primary;
+}
+
+@utility heading-display {
+  @apply font-black tracking-tighter uppercase text-foreground;
+  font-family: var(--font-display);
+}
+
+/* ============================
+   ANIMATIONS — Simple & Elegant
+   ============================ */
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes subtle-glow {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.68 0.14 72 / 0); }
+  50% { box-shadow: 0 0 20px 2px oklch(0.68 0.14 72 / 0.15); }
+}
+
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes border-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@utility animate-fade-in-up {
+  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@utility animate-fade-in {
+  animation: fade-in 0.5s ease both;
+}
+
+@utility animate-subtle-glow {
+  animation: subtle-glow 3s ease-in-out infinite;
+}
+
+@utility animate-float-gentle {
+  animation: float-gentle 4s ease-in-out infinite;
+}
+
+@utility animate-border-shimmer {
+  background-size: 200% 100%;
+  animation: border-shimmer 3s linear infinite;
+}
+
+@utility animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ============================
+   UTILITY CLASSES
+   ============================ */
+
+@utility bg-brand-soft {
+  background-image: var(--gradient-brand-soft);
+}
+
+@utility animate-reveal-up {
+  animation: fade-in-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@utility animate-gradient-pan {
+  background-size: 200% 200%;
+  animation: fade-in 1.2s ease both;
+}
+
+@utility card-lift {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.3s ease;
+}
+@utility card-lift-hover {
+  @apply hover:-translate-y-0.5;
+  box-shadow: var(--shadow-brand);
+}
+
+/* Gold border shimmer on hover */
+.gold-border-hover {
+  position: relative;
+}
+.gold-border-hover::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.68 0.14 72 / 0.3) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+.gold-border-hover:hover::before {
+  opacity: 1;
+  animation: border-shimmer 2s linear infinite;
+}
+
+/* Warm surface — balanced gold tint, not overwhelming */
+.surface-gold-warm {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background-color: oklch(0.975 0.006 72);
+}
+
+/* Navy surface with balanced glow */
+.surface-navy-glow {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+}
+.surface-navy-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 30%, oklch(0.68 0.14 72 / 0.12), transparent 55%),
+    radial-gradient(circle at 85% 80%, oklch(0.56 0.22 27 / 0.08), transparent 60%);
+}
+.surface-navy-glow::after {
+  content: "";
+  position: absolute;
+  left: -6rem;
+  top: 50%;
+  width: 16rem;
+  height: 16rem;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 9999px;
+  background: oklch(0.68 0.14 72 / 0.12);
+  filter: blur(50px);
+  transform: translateY(-50%);
+  animation: float-gentle 8s ease-in-out infinite;
+}
+.surface-navy-glow > .glow-accent {
+  position: absolute;
+  right: -5rem;
+  bottom: -3rem;
+  width: 16rem;
+  height: 16rem;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 9999px;
+  background: oklch(0.56 0.22 27 / 0.10);
+  filter: blur(50px);
+  animation: float-gentle 10s ease-in-out infinite reverse;
+}
+
+/* ============================
+   CONTENT BLOCKS (Admin-editable)
+   ============================ */
+
+.content-block {
+  position: relative;
+  transition: outline 0.2s ease;
+}
+.content-block:hover {
+  outline: 1px dashed oklch(0.68 0.14 72 / 0.3);
+  outline-offset: 4px;
+}
+.content-block.is-editing {
+  outline: 2px dashed oklch(0.68 0.14 72);
+  outline-offset: 6px;
+}
+
+/* Drag handle for reordering blocks */
+.block-drag-handle {
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.content-block:hover .block-drag-handle {
+  opacity: 1;
+}
+.block-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Admin toolbar for content blocks */
+.block-toolbar {
+  position: absolute;
+  top: -36px;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.content-block:hover .block-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Animação da barra de progresso do escudo de carregamento (app-splash). */
+@keyframes agnep-progress {
+  0% {
+    width: 0%;
+    transform: translateX(0%);
+  }
+  100% {
+    width: 100%;
+    transform: translateX(0%);
+  }
+}

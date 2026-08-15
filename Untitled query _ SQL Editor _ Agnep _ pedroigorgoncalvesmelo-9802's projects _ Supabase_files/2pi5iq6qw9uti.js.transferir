@@ -1,0 +1,605 @@
+;!function(){try { var e="undefined"!=typeof globalThis?globalThis:"undefined"!=typeof global?global:"undefined"!=typeof window?window:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&((e._debugIds|| (e._debugIds={}))[n]="25f61932-aaec-0bcb-c018-5c1f63fcb37f")}catch(e){}}();
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,46932,e=>{"use strict";e.s(["queryOptions",0,function(e){return e}])},938343,e=>{"use strict";e.s(["tableEditorKeys",0,{tableEditor:(e,t)=>["projects",e,"table-editor",t].filter(Boolean)}])},34479,664304,e=>{"use strict";e.i(850036);var t=e.i(479084);let n=({id:e,scoped:n=!1})=>e?n?t.safeSql`
+    with base_table_info as (
+        select
+            c.oid::int8 as id,
+            nc.nspname as schema,
+            c.relname as name,
+            c.relkind,
+            c.relrowsecurity as rls_enabled,
+            c.relforcerowsecurity as rls_forced,
+            c.relreplident,
+            c.relowner,
+            obj_description(c.oid) as comment,
+            fs.srvname as foreign_server_name,
+            fdw.fdwname as foreign_data_wrapper_name,
+            fdw_handler.proname as foreign_data_wrapper_handler
+        from pg_class c
+        join pg_namespace nc on nc.oid = c.relnamespace
+        left join pg_foreign_table ft on ft.ftrelid = c.oid
+        left join pg_foreign_server fs on fs.oid = ft.ftserver
+        left join pg_foreign_data_wrapper fdw on fdw.oid = fs.srvfdw
+        left join pg_proc fdw_handler on fdw.fdwhandler = fdw_handler.oid
+        where c.oid = ${(0,t.literal)(e)}
+            and not pg_is_other_temp_schema(nc.oid)
+            and (
+                pg_has_role(c.relowner, 'USAGE')
+                or has_table_privilege(
+                    c.oid,
+                    'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER'
+                )
+                or has_any_column_privilege(c.oid, 'SELECT, INSERT, UPDATE, REFERENCES')
+            )
+    ),
+    table_stats as (
+        select
+            b.id,
+            case
+                when b.relreplident = 'd' then 'DEFAULT'
+                when b.relreplident = 'i' then 'INDEX'
+                when b.relreplident = 'f' then 'FULL'
+                else 'NOTHING'
+            end as replica_identity,
+            pg_total_relation_size(format('%I.%I', b.schema, b.name))::int8 as bytes,
+            pg_size_pretty(pg_total_relation_size(format('%I.%I', b.schema, b.name))) as size,
+            pg_stat_get_live_tuples(b.id) as live_rows_estimate,
+            pg_stat_get_dead_tuples(b.id) as dead_rows_estimate
+        from base_table_info b
+        where b.relkind in ('r', 'p')
+    ),
+    primary_keys as (
+        select
+            i.indrelid as table_id,
+            jsonb_agg(
+                jsonb_build_object(
+                    'schema', n.nspname,
+                    'table_name', c.relname,
+                    'table_id', i.indrelid::int8,
+                    'name', a.attname
+                )
+                order by array_position(i.indkey, a.attnum)
+            ) as primary_keys
+        from pg_index i
+        join pg_class c on i.indrelid = c.oid
+        join pg_namespace n on c.relnamespace = n.oid
+		join pg_attribute a on a.attrelid = c.oid and a.attnum = any(i.indkey)
+        where i.indisprimary
+            and i.indrelid = ${(0,t.literal)(e)}
+        group by i.indrelid
+    ),
+    index_cols as (
+        select
+            i.indrelid as table_id,
+            i.indkey,
+            array_agg(
+                a.attname
+                order by array_position(i.indkey, a.attnum)
+            ) as columns
+        from pg_index i
+        join pg_class c on i.indrelid = c.oid
+        join pg_attribute a on a.attrelid = c.oid
+            and a.attnum = any(i.indkey)
+        where i.indisunique
+            and i.indisprimary = false
+            and i.indrelid = ${(0,t.literal)(e)}
+        group by i.indrelid, i.indkey
+    ),
+    unique_indexes as (
+        select
+            ic.table_id,
+            jsonb_agg(
+                jsonb_build_object(
+                    'schema', n.nspname,
+                    'table_name', c.relname,
+                    'table_id', ic.table_id::int8,
+                    'columns', ic.columns
+                )
+            ) as unique_indexes
+        from index_cols ic
+        join pg_class c on c.oid = ic.table_id
+        join pg_namespace n on n.oid = c.relnamespace
+        group by ic.table_id
+    ),
+    relationships as (
+        select
+            c.conrelid as source_id,
+            c.confrelid as target_id,
+            jsonb_build_object(
+                'id', c.oid::int8,
+                'constraint_name', c.conname,
+                'deletion_action', c.confdeltype,
+                'update_action', c.confupdtype,
+                'source_schema', nsa.nspname,
+                'source_table_name', csa.relname,
+                'source_column_name', sa.attname,
+                'target_table_schema', nta.nspname,
+                'target_table_name', cta.relname,
+                'target_column_name', ta.attname
+            ) as rel_info
+        from pg_constraint c
+        join pg_class csa on c.conrelid = csa.oid
+        join pg_namespace nsa on csa.relnamespace = nsa.oid
+        join pg_attribute sa on (sa.attrelid = c.conrelid and sa.attnum = any(c.conkey))
+        join pg_class cta on c.confrelid = cta.oid
+        join pg_namespace nta on cta.relnamespace = nta.oid
+        join pg_attribute ta on (ta.attrelid = c.confrelid and ta.attnum = any(c.confkey))
+        where c.contype = 'f'
+            and (c.conrelid = ${(0,t.literal)(e)} or c.confrelid = ${(0,t.literal)(e)})
+    ),
+    columns as (
+        select
+            a.attrelid as table_id,
+            jsonb_agg(jsonb_build_object(
+                'id', (a.attrelid || '.' || a.attnum),
+                'table_id', c.oid::int8,
+                'schema', nc.nspname,
+                'table', c.relname,
+                'ordinal_position', a.attnum,
+                'name', a.attname,
+                'default_value', case
+                    when a.atthasdef then pg_get_expr(ad.adbin, ad.adrelid)
+                    else null
+                end,
+                'data_type', case
+                    when t.typtype = 'd' then
+                        case
+                            when bt.typelem <> 0::oid and bt.typlen = -1 then 'ARRAY'
+                            when nbt.nspname = 'pg_catalog' then format_type(t.typbasetype, null)
+                            else 'USER-DEFINED'
+                        end
+                    else
+                        case
+                            when t.typelem <> 0::oid and t.typlen = -1 then 'ARRAY'
+                            when nt.nspname = 'pg_catalog' then format_type(a.atttypid, null)
+                            else 'USER-DEFINED'
+                        end
+                end,
+                'format', coalesce(bt.typname, t.typname),
+                'format_schema', coalesce(nbt.nspname, nt.nspname),
+                'is_identity', a.attidentity in ('a', 'd'),
+                'identity_generation', case a.attidentity
+                    when 'a' then 'ALWAYS'
+                    when 'd' then 'BY DEFAULT'
+                    else null
+                end,
+                'is_generated', a.attgenerated in ('s'),
+                'is_nullable', not (a.attnotnull or t.typtype = 'd' and t.typnotnull),
+                'is_updatable', (
+                    b.relkind in ('r', 'p') or
+                    (b.relkind in ('v', 'f') and pg_column_is_updatable(b.id, a.attnum, false))
+                ),
+                'is_unique', uniques.table_id is not null,
+                'check', check_constraints.definition,
+                'comment', col_description(c.oid, a.attnum),
+                'enums', coalesce(
+                    (
+                        select jsonb_agg(e.enumlabel order by e.enumsortorder)
+                        from pg_catalog.pg_enum e
+                        where e.enumtypid = coalesce(bt.oid, t.oid)
+                            or e.enumtypid = coalesce(bt.typelem, t.typelem)
+                    ),
+                    '[]'::jsonb
+                )
+            ) order by a.attnum) as columns
+        from pg_attribute a
+        join base_table_info b on a.attrelid = b.id
+        join pg_class c on a.attrelid = c.oid
+        join pg_namespace nc on c.relnamespace = nc.oid
+        left join pg_attrdef ad on (a.attrelid = ad.adrelid and a.attnum = ad.adnum)
+        join pg_type t on a.atttypid = t.oid
+        join pg_namespace nt on t.typnamespace = nt.oid
+        left join pg_type bt on (t.typtype = 'd' and t.typbasetype = bt.oid)
+        left join pg_namespace nbt on bt.typnamespace = nbt.oid
+        left join (
+            select
+                conrelid as table_id,
+                conkey[1] as ordinal_position
+            from pg_catalog.pg_constraint
+            where contype = 'u' and cardinality(conkey) = 1
+                and conrelid = ${(0,t.literal)(e)}
+            group by conrelid, conkey[1]
+        ) as uniques on uniques.table_id = a.attrelid and uniques.ordinal_position = a.attnum
+        left join (
+            select distinct on (conrelid, conkey[1])
+                conrelid as table_id,
+                conkey[1] as ordinal_position,
+                substring(
+                    pg_get_constraintdef(oid, true),
+                    8,
+                    length(pg_get_constraintdef(oid, true)) - 8
+                ) as definition
+            from pg_constraint
+            where contype = 'c' and cardinality(conkey) = 1
+                and conrelid = ${(0,t.literal)(e)}
+            order by conrelid, conkey[1], oid asc
+        ) as check_constraints on check_constraints.table_id = a.attrelid
+                            and check_constraints.ordinal_position = a.attnum
+        where a.attnum > 0
+        and not a.attisdropped
+        group by a.attrelid
+    )
+    select
+        case b.relkind
+            when 'r' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'rls_enabled', b.rls_enabled,
+                'rls_forced', b.rls_forced,
+                'replica_identity', ts.replica_identity,
+                'bytes', ts.bytes,
+                'size', ts.size,
+                'live_rows_estimate', ts.live_rows_estimate,
+                'dead_rows_estimate', ts.dead_rows_estimate,
+                'comment', b.comment,
+                'primary_keys', coalesce(pk.primary_keys, '[]'::jsonb),
+                'unique_indexes', coalesce(ui.unique_indexes, '[]'::jsonb),
+                'relationships', coalesce(
+                    (select jsonb_agg(r.rel_info)
+                    from relationships r
+                    where r.source_id = b.id or r.target_id = b.id),
+                    '[]'::jsonb
+                ),
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+            when 'p' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'rls_enabled', b.rls_enabled,
+                'rls_forced', b.rls_forced,
+                'replica_identity', ts.replica_identity,
+                'bytes', ts.bytes,
+                'size', ts.size,
+                'live_rows_estimate', ts.live_rows_estimate,
+                'dead_rows_estimate', ts.dead_rows_estimate,
+                'comment', b.comment,
+                'primary_keys', coalesce(pk.primary_keys, '[]'::jsonb),
+                'unique_indexes', coalesce(ui.unique_indexes, '[]'::jsonb),
+                'relationships', coalesce(
+                    (select jsonb_agg(r.rel_info)
+                    from relationships r
+                    where r.source_id = b.id or r.target_id = b.id),
+                    '[]'::jsonb
+                ),
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+            when 'v' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'is_updatable', (pg_relation_is_updatable(b.id, false) & 20) = 20,
+                'comment', b.comment,
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+            when 'm' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'is_populated', true,
+                'comment', b.comment,
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+            when 'f' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'comment', b.comment,
+                'foreign_server_name', b.foreign_server_name,
+                'foreign_data_wrapper_name', b.foreign_data_wrapper_name,
+                'foreign_data_wrapper_handler', b.foreign_data_wrapper_handler,
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+        end as entity
+    from base_table_info b
+    left join table_stats ts on b.id = ts.id
+    left join primary_keys pk on b.id = pk.table_id
+    left join unique_indexes ui on b.id = ui.table_id
+    left join columns c on b.id = c.table_id;
+  `:t.safeSql`
+    -- FROZEN legacy path (pgMetaScopedIntrospection off): do not edit -- it must
+    -- keep matching production behavior until the flag cleanup deletes it.
+    with base_table_info as (
+        select
+            c.oid::int8 as id,
+            nc.nspname as schema,
+            c.relname as name,
+            c.relkind,
+            c.relrowsecurity as rls_enabled,
+            c.relforcerowsecurity as rls_forced,
+            c.relreplident,
+            c.relowner,
+            obj_description(c.oid) as comment,
+            fs.srvname as foreign_server_name,
+            fdw.fdwname as foreign_data_wrapper_name,
+            fdw_handler.proname as foreign_data_wrapper_handler
+        from pg_class c
+        join pg_namespace nc on nc.oid = c.relnamespace
+        left join pg_foreign_table ft on ft.ftrelid = c.oid
+        left join pg_foreign_server fs on fs.oid = ft.ftserver
+        left join pg_foreign_data_wrapper fdw on fdw.oid = fs.srvfdw
+        left join pg_proc fdw_handler on fdw.fdwhandler = fdw_handler.oid
+        where c.oid = ${(0,t.literal)(e)}
+            and not pg_is_other_temp_schema(nc.oid)
+            and (
+                pg_has_role(c.relowner, 'USAGE')
+                or has_table_privilege(
+                    c.oid,
+                    'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER'
+                )
+                or has_any_column_privilege(c.oid, 'SELECT, INSERT, UPDATE, REFERENCES')
+            )
+    ),
+    table_stats as (
+        select
+            b.id,
+            case
+                when b.relreplident = 'd' then 'DEFAULT'
+                when b.relreplident = 'i' then 'INDEX'
+                when b.relreplident = 'f' then 'FULL'
+                else 'NOTHING'
+            end as replica_identity,
+            pg_total_relation_size(format('%I.%I', b.schema, b.name))::int8 as bytes,
+            pg_size_pretty(pg_total_relation_size(format('%I.%I', b.schema, b.name))) as size,
+            pg_stat_get_live_tuples(b.id) as live_rows_estimate,
+            pg_stat_get_dead_tuples(b.id) as dead_rows_estimate
+        from base_table_info b
+        where b.relkind in ('r', 'p')
+    ),
+    primary_keys as (
+        select
+            i.indrelid as table_id,
+            jsonb_agg(
+                jsonb_build_object(
+                    'schema', n.nspname,
+                    'table_name', c.relname,
+                    'table_id', i.indrelid::int8,
+                    'name', a.attname
+                )
+                order by array_position(i.indkey, a.attnum)
+            ) as primary_keys
+        from pg_index i
+        join pg_class c on i.indrelid = c.oid
+        join pg_namespace n on c.relnamespace = n.oid
+		join pg_attribute a on a.attrelid = c.oid and a.attnum = any(i.indkey)
+        where i.indisprimary
+        group by i.indrelid
+    ),
+    index_cols as (
+        select
+            i.indrelid as table_id,
+            i.indkey,
+            array_agg(
+                a.attname
+                order by array_position(i.indkey, a.attnum)
+            ) as columns
+        from pg_index i
+        join pg_class c on i.indrelid = c.oid
+        join pg_attribute a on a.attrelid = c.oid
+            and a.attnum = any(i.indkey)
+        where i.indisunique
+            and i.indisprimary = false
+        group by i.indrelid, i.indkey
+    ),
+    unique_indexes as (
+        select
+            ic.table_id,
+            jsonb_agg(
+                jsonb_build_object(
+                    'schema', n.nspname,
+                    'table_name', c.relname,
+                    'table_id', ic.table_id::int8,
+                    'columns', ic.columns
+                )
+            ) as unique_indexes
+        from index_cols ic
+        join pg_class c on c.oid = ic.table_id
+        join pg_namespace n on n.oid = c.relnamespace
+        group by ic.table_id
+    ),
+    relationships as (
+        select
+            c.conrelid as source_id,
+            c.confrelid as target_id,
+            jsonb_build_object(
+                'id', c.oid::int8,
+                'constraint_name', c.conname,
+                'deletion_action', c.confdeltype,
+                'update_action', c.confupdtype,
+                'source_schema', nsa.nspname,
+                'source_table_name', csa.relname,
+                'source_column_name', sa.attname,
+                'target_table_schema', nta.nspname,
+                'target_table_name', cta.relname,
+                'target_column_name', ta.attname
+            ) as rel_info
+        from pg_constraint c
+        join pg_class csa on c.conrelid = csa.oid
+        join pg_namespace nsa on csa.relnamespace = nsa.oid
+        join pg_attribute sa on (sa.attrelid = c.conrelid and sa.attnum = any(c.conkey))
+        join pg_class cta on c.confrelid = cta.oid
+        join pg_namespace nta on cta.relnamespace = nta.oid
+        join pg_attribute ta on (ta.attrelid = c.confrelid and ta.attnum = any(c.confkey))
+        where c.contype = 'f'
+    ),
+    columns as (
+        select
+            a.attrelid as table_id,
+            jsonb_agg(jsonb_build_object(
+                'id', (a.attrelid || '.' || a.attnum),
+                'table_id', c.oid::int8,
+                'schema', nc.nspname,
+                'table', c.relname,
+                'ordinal_position', a.attnum,
+                'name', a.attname,
+                'default_value', case
+                    when a.atthasdef then pg_get_expr(ad.adbin, ad.adrelid)
+                    else null
+                end,
+                'data_type', case
+                    when t.typtype = 'd' then
+                        case
+                            when bt.typelem <> 0::oid and bt.typlen = -1 then 'ARRAY'
+                            when nbt.nspname = 'pg_catalog' then format_type(t.typbasetype, null)
+                            else 'USER-DEFINED'
+                        end
+                    else
+                        case
+                            when t.typelem <> 0::oid and t.typlen = -1 then 'ARRAY'
+                            when nt.nspname = 'pg_catalog' then format_type(a.atttypid, null)
+                            else 'USER-DEFINED'
+                        end
+                end,
+                'format', coalesce(bt.typname, t.typname),
+                'format_schema', coalesce(nbt.nspname, nt.nspname),
+                'is_identity', a.attidentity in ('a', 'd'),
+                'identity_generation', case a.attidentity
+                    when 'a' then 'ALWAYS'
+                    when 'd' then 'BY DEFAULT'
+                    else null
+                end,
+                'is_generated', a.attgenerated in ('s'),
+                'is_nullable', not (a.attnotnull or t.typtype = 'd' and t.typnotnull),
+                'is_updatable', (
+                    b.relkind in ('r', 'p') or
+                    (b.relkind in ('v', 'f') and pg_column_is_updatable(b.id, a.attnum, false))
+                ),
+                'is_unique', uniques.table_id is not null,
+                'check', check_constraints.definition,
+                'comment', col_description(c.oid, a.attnum),
+                'enums', coalesce(
+                    (
+                        select jsonb_agg(e.enumlabel order by e.enumsortorder)
+                        from pg_catalog.pg_enum e
+                        where e.enumtypid = coalesce(bt.oid, t.oid)
+                            or e.enumtypid = coalesce(bt.typelem, t.typelem)
+                    ),
+                    '[]'::jsonb
+                )
+            ) order by a.attnum) as columns
+        from pg_attribute a
+        join base_table_info b on a.attrelid = b.id
+        join pg_class c on a.attrelid = c.oid
+        join pg_namespace nc on c.relnamespace = nc.oid
+        left join pg_attrdef ad on (a.attrelid = ad.adrelid and a.attnum = ad.adnum)
+        join pg_type t on a.atttypid = t.oid
+        join pg_namespace nt on t.typnamespace = nt.oid
+        left join pg_type bt on (t.typtype = 'd' and t.typbasetype = bt.oid)
+        left join pg_namespace nbt on bt.typnamespace = nbt.oid
+        left join (
+            select
+                conrelid as table_id,
+                conkey[1] as ordinal_position
+            from pg_catalog.pg_constraint
+            where contype = 'u' and cardinality(conkey) = 1
+            group by conrelid, conkey[1]
+        ) as uniques on uniques.table_id = a.attrelid and uniques.ordinal_position = a.attnum
+        left join (
+            select distinct on (conrelid, conkey[1])
+                conrelid as table_id,
+                conkey[1] as ordinal_position,
+                substring(
+                    pg_get_constraintdef(oid, true),
+                    8,
+                    length(pg_get_constraintdef(oid, true)) - 8
+                ) as definition
+            from pg_constraint
+            where contype = 'c' and cardinality(conkey) = 1
+            order by conrelid, conkey[1], oid asc
+        ) as check_constraints on check_constraints.table_id = a.attrelid
+                            and check_constraints.ordinal_position = a.attnum
+        where a.attnum > 0
+        and not a.attisdropped
+        group by a.attrelid
+    )
+    select
+        case b.relkind
+            when 'r' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'rls_enabled', b.rls_enabled,
+                'rls_forced', b.rls_forced,
+                'replica_identity', ts.replica_identity,
+                'bytes', ts.bytes,
+                'size', ts.size,
+                'live_rows_estimate', ts.live_rows_estimate,
+                'dead_rows_estimate', ts.dead_rows_estimate,
+                'comment', b.comment,
+                'primary_keys', coalesce(pk.primary_keys, '[]'::jsonb),
+                'unique_indexes', coalesce(ui.unique_indexes, '[]'::jsonb),
+                'relationships', coalesce(
+                    (select jsonb_agg(r.rel_info)
+                    from relationships r
+                    where r.source_id = b.id or r.target_id = b.id),
+                    '[]'::jsonb
+                ),
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+            when 'p' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'rls_enabled', b.rls_enabled,
+                'rls_forced', b.rls_forced,
+                'replica_identity', ts.replica_identity,
+                'bytes', ts.bytes,
+                'size', ts.size,
+                'live_rows_estimate', ts.live_rows_estimate,
+                'dead_rows_estimate', ts.dead_rows_estimate,
+                'comment', b.comment,
+                'primary_keys', coalesce(pk.primary_keys, '[]'::jsonb),
+                'unique_indexes', coalesce(ui.unique_indexes, '[]'::jsonb),
+                'relationships', coalesce(
+                    (select jsonb_agg(r.rel_info)
+                    from relationships r
+                    where r.source_id = b.id or r.target_id = b.id),
+                    '[]'::jsonb
+                ),
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+            when 'v' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'is_updatable', (pg_relation_is_updatable(b.id, false) & 20) = 20,
+                'comment', b.comment,
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+            when 'm' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'is_populated', true,
+                'comment', b.comment,
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+            when 'f' then jsonb_build_object(
+                'entity_type', b.relkind,
+                'id', b.id,
+                'schema', b.schema,
+                'name', b.name,
+                'comment', b.comment,
+                'foreign_server_name', b.foreign_server_name,
+                'foreign_data_wrapper_name', b.foreign_data_wrapper_name,
+                'foreign_data_wrapper_handler', b.foreign_data_wrapper_handler,
+                'columns', coalesce(c.columns, '[]'::jsonb)
+            )
+        end as entity
+    from base_table_info b
+    left join table_stats ts on b.id = ts.id
+    left join primary_keys pk on b.id = pk.table_id
+    left join unique_indexes ui on b.id = ui.table_id
+    left join columns c on b.id = c.table_id;
+  `:t.safeSql``;e.s(["getDuplicateRowsSQL",0,({duplicatedTableName:e,sourceTableName:n,sourceTableSchema:i})=>t.safeSql`INSERT INTO ${(0,t.ident)(i)}.${(0,t.ident)(e)} SELECT * FROM ${(0,t.ident)(i)}.${(0,t.ident)(n)};`,"getDuplicateTableSQL",0,({comment:e,duplicatedTableName:n,sourceTableName:i,sourceTableSchema:a})=>{let o=t.safeSql`CREATE TABLE ${(0,t.ident)(a)}.${(0,t.ident)(n)} (LIKE ${(0,t.ident)(a)}.${(0,t.ident)(i)} INCLUDING ALL);`,r=void 0!=e?t.safeSql`comment on table ${(0,t.ident)(a)}.${(0,t.ident)(n)} is ${(0,t.literal)(e)};`:t.safeSql``;return(0,t.joinSqlFragments)([o,r],"\n")},"getTableEditorSql",0,n],664304);var i=e.i(46932),a=e.i(125356);e.i(128328);var o=e.i(657588),r=e.i(938343),s=e.i(617361);let l="pgMetaScopedIntrospection";async function d({projectRef:e,connectionString:t,id:i,scoped:a=!1},o){if(!i)throw Error("id is required");let r=n({id:i,scoped:a}),{result:l}=await (0,s.executeSql)({projectRef:e,connectionString:t,sql:r,queryKey:["table-editor",i]},o);return l[0]?.entity??null}let c=({projectRef:e,connectionString:t,id:n,scoped:a})=>(0,i.queryOptions)({queryKey:[...r.tableEditorKeys.tableEditor(e,n),{scoped:!!a}],queryFn:({signal:i})=>d({projectRef:e,connectionString:t,id:n,scoped:a},i)});e.s(["PG_META_SCOPED_INTROSPECTION_FLAG",0,l,"getTableEditor",0,d,"prefetchTableEditor",0,function(e,{projectRef:t,connectionString:n,id:i,scoped:a}){return e.fetchQuery(c({projectRef:t,connectionString:n,id:i,scoped:a}))},"tableEditorQueryOptions",0,c,"useTableEditorQuery",0,({projectRef:e,connectionString:t,id:n},{enabled:i=!0,...r}={})=>{let s=!!(0,o.useFlag)(l);return(0,a.useQuery)({...c({projectRef:e,connectionString:t,id:n,scoped:s}),enabled:i&&void 0!==e&&void 0!==n&&!isNaN(n),refetchOnWindowFocus:!1,refetchOnMount:!1,staleTime:3e5,...r})}],34479)},309584,e=>{"use strict";e.i(128328);var t=e.i(657588),n=e.i(416340),i=e.i(34479),a=e.i(10429);let o=!1,r=!1,s=!1,l=()=>{},d=new Promise(e=>{l=e}),c=()=>{r||(r=!0,l())};e.s(["isScopedIntrospection",0,()=>o,"scopedIntrospectionReady",0,()=>(s||(s=!0,setTimeout(c,5e3)),d),"useSyncScopedIntrospection",0,()=>{let{hasLoaded:e}=(0,t.useFeatureFlags)(),r=!!(0,t.useFlag)(i.PG_META_SCOPED_INTROSPECTION_FLAG);(0,n.useEffect)(()=>{o=r,(e||!a.IS_PLATFORM)&&c()},[r,e])}])},608793,e=>{"use strict";let t="u"<typeof __SENTRY_DEBUG__||__SENTRY_DEBUG__;e.s(["DEBUG_BUILD",0,t])},342474,(e,t,n)=>{"use strict";t.exports=["chrome 111","edge 111","firefox 111","safari 16.4"]},350916,(e,t,n)=>{"use strict";Object.defineProperty(n,"__esModule",{value:!0});var i={UNDERSCORE_GLOBAL_ERROR_ROUTE:function(){return s},UNDERSCORE_GLOBAL_ERROR_ROUTE_ENTRY:function(){return l},UNDERSCORE_NOT_FOUND_ROUTE:function(){return o},UNDERSCORE_NOT_FOUND_ROUTE_ENTRY:function(){return r}};for(var a in i)Object.defineProperty(n,a,{enumerable:!0,get:i[a]});let o="/_not-found",r=`${o}/page`,s="/_global-error",l=`${s}/page`},798119,(e,t,n)=>{"use strict";var i,a=e.i(302016);Object.defineProperty(n,"__esModule",{value:!0});var o={APP_CLIENT_INTERNALS:function(){return en},APP_PATHS_MANIFEST:function(){return h},APP_PATH_ROUTES_MANIFEST:function(){return T},AdapterOutputType:function(){return _},BARREL_OPTIMIZATION_PREFIX:function(){return V},BLOCKED_PAGES:function(){return W},BUILD_ID_FILE:function(){return B},BUILD_MANIFEST:function(){return R},CLIENT_PUBLIC_FILES_PATH:function(){return G},CLIENT_REFERENCE_MANIFEST:function(){return z},CLIENT_STATIC_FILES_PATH:function(){return $},CLIENT_STATIC_FILES_RUNTIME_MAIN:function(){return ee},CLIENT_STATIC_FILES_RUNTIME_MAIN_APP:function(){return et},CLIENT_STATIC_FILES_RUNTIME_POLYFILLS:function(){return eo},CLIENT_STATIC_FILES_RUNTIME_POLYFILLS_SYMBOL:function(){return er},CLIENT_STATIC_FILES_RUNTIME_REACT_REFRESH:function(){return ei},CLIENT_STATIC_FILES_RUNTIME_WEBPACK:function(){return ea},COMPILER_INDEXES:function(){return c},COMPILER_NAMES:function(){return d},CONFIG_FILES:function(){return q},DEFAULT_RUNTIME_WEBPACK:function(){return es},DEFAULT_SANS_SERIF_FONT:function(){return eu},DEFAULT_SERIF_FONT:function(){return e_},DEV_CLIENT_MIDDLEWARE_MANIFEST:function(){return M},DEV_CLIENT_PAGES_MANIFEST:function(){return P},DYNAMIC_CSS_MANIFEST:function(){return J},EDGE_RUNTIME_WEBPACK:function(){return el},EDGE_UNSUPPORTED_NODE_APIS:function(){return eE},EXPORT_DETAIL:function(){return N},EXPORT_MARKER:function(){return j},FUNCTIONS_CONFIG_MANIFEST:function(){return I},IMAGES_MANIFEST:function(){return C},INTERCEPTION_ROUTE_REWRITE_MANIFEST:function(){return Z},MIDDLEWARE_BUILD_MANIFEST:function(){return K},MIDDLEWARE_MANIFEST:function(){return v},MIDDLEWARE_REACT_LOADABLE_MANIFEST:function(){return X},MODERN_BROWSERSLIST_TARGET:function(){return s.default},NEXT_BUILTIN_DOCUMENT:function(){return Y},NEXT_FONT_MANIFEST:function(){return S},PAGES_MANIFEST:function(){return g},PHASE_ANALYZE:function(){return p},PHASE_DEVELOPMENT_SERVER:function(){return b},PHASE_EXPORT:function(){return u},PHASE_INFO:function(){return y},PHASE_PRODUCTION_BUILD:function(){return m},PHASE_PRODUCTION_SERVER:function(){return f},PHASE_TEST:function(){return E},PREFETCH_HINTS:function(){return O},PRERENDER_MANIFEST:function(){return D},REACT_LOADABLE_MANIFEST:function(){return F},ROUTES_MANIFEST:function(){return A},RSC_MODULE_TYPES:function(){return eb},SERVER_DIRECTORY:function(){return x},SERVER_FILES_MANIFEST:function(){return L},SERVER_PROPS_ID:function(){return ec},SERVER_REFERENCE_MANIFEST:function(){return H},STATIC_PROPS_ID:function(){return ed},STATIC_STATUS_PAGES:function(){return ep},STRING_LITERAL_DROP_BUNDLE:function(){return Q},SUBRESOURCE_INTEGRITY_MANIFEST:function(){return w},SYSTEM_ENTRYPOINTS:function(){return ey},TRACE_OUTPUT_VERSION:function(){return em},TURBOPACK_CLIENT_BUILD_MANIFEST:function(){return U},TURBOPACK_CLIENT_MIDDLEWARE_MANIFEST:function(){return k},TURBO_TRACE_DEFAULT_MEMORY_LIMIT:function(){return ef},UNDERSCORE_GLOBAL_ERROR_ROUTE:function(){return l.UNDERSCORE_GLOBAL_ERROR_ROUTE},UNDERSCORE_GLOBAL_ERROR_ROUTE_ENTRY:function(){return l.UNDERSCORE_GLOBAL_ERROR_ROUTE_ENTRY},UNDERSCORE_NOT_FOUND_ROUTE:function(){return l.UNDERSCORE_NOT_FOUND_ROUTE},UNDERSCORE_NOT_FOUND_ROUTE_ENTRY:function(){return l.UNDERSCORE_NOT_FOUND_ROUTE_ENTRY}};for(var r in o)Object.defineProperty(n,r,{enumerable:!0,get:o[r]});let s=e.r(2879)._(e.r(342474)),l=e.r(350916),d={client:"client",server:"server",edgeServer:"edge-server"},c={[d.client]:0,[d.server]:1,[d.edgeServer]:2};var _=((i={}).PAGES="PAGES",i.PAGES_API="PAGES_API",i.APP_PAGE="APP_PAGE",i.APP_ROUTE="APP_ROUTE",i.PRERENDER="PRERENDER",i.STATIC_FILE="STATIC_FILE",i.MIDDLEWARE="MIDDLEWARE",i);let u="phase-export",p="phase-analyze",m="phase-production-build",f="phase-production-server",b="phase-development-server",E="phase-test",y="phase-info",g="pages-manifest.json",h="app-paths-manifest.json",T="app-path-routes-manifest.json",R="build-manifest.json",I="functions-config-manifest.json",w="subresource-integrity-manifest",S="next-font-manifest",j="export-marker.json",N="export-detail.json",D="prerender-manifest.json",O="prefetch-hints.json",A="routes-manifest.json",C="images-manifest.json",L="required-server-files",P="_devPagesManifest.json",v="middleware-manifest.json",k="_clientMiddlewareManifest.js",U="client-build-manifest.json",M="_devMiddlewareManifest.json",F="react-loadable-manifest.json",x="server",q=["next.config.js","next.config.mjs","next.config.ts",...a.default?.features?.typescript?["next.config.mts"]:[]],B="BUILD_ID",W=["/_document","/_app","/_error"],G="public",$="static",Q="__NEXT_DROP_CLIENT_FILE__",Y="__NEXT_BUILTIN_DOCUMENT__",V="__barrel_optimize__",z="client-reference-manifest",H="server-reference-manifest",K="middleware-build-manifest",X="middleware-react-loadable-manifest",Z="interception-route-rewrite-manifest",J="dynamic-css-manifest",ee="main",et=`${ee}-app`,en="app-pages-internals",ei="react-refresh",ea="webpack",eo="polyfills",er=Symbol(eo),es="webpack-runtime",el="edge-runtime-webpack",ed="__N_SSG",ec="__N_SSP",e_={name:"Times New Roman",xAvgCharWidth:821,azAvgWidth:854.3953488372093,unitsPerEm:2048},eu={name:"Arial",xAvgCharWidth:904,azAvgWidth:934.5116279069767,unitsPerEm:2048},ep=["/500"],em=1,ef=6e3,eb={client:"client",server:"server"},eE=["clearImmediate","setImmediate","BroadcastChannel","ByteLengthQueuingStrategy","CompressionStream","CountQueuingStrategy","DecompressionStream","DomException","MessageChannel","MessageEvent","MessagePort","ReadableByteStreamController","ReadableStreamBYOBRequest","ReadableStreamDefaultController","TransformStreamDefaultController","WritableStreamDefaultController"],ey=new Set([ee,ei,et]);("function"==typeof n.default||"object"==typeof n.default&&null!==n.default)&&void 0===n.default.__esModule&&(Object.defineProperty(n.default,"__esModule",{value:!0}),Object.assign(n.default,n),t.exports=n.default)},287149,e=>{"use strict";let t=(0,e.i(679709).default)("Key",[["path",{d:"m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4",key:"g0fldk"}],["path",{d:"m21 2-9.6 9.6",key:"1j0ho8"}],["circle",{cx:"7.5",cy:"15.5",r:"5.5",key:"yqb3hr"}]]);e.s(["Key",0,t],287149)},698269,123346,e=>{"use strict";let t=(0,e.i(679709).default)("Lock",[["rect",{width:"18",height:"11",x:"3",y:"11",rx:"2",ry:"2",key:"1w4ew1"}],["path",{d:"M7 11V7a5 5 0 0 1 10 0v4",key:"fwvmzm"}]]);e.s(["default",0,t],123346),e.s(["Lock",0,t],698269)},602089,583896,e=>{"use strict";var t=e.i(221628),n=e.i(774107),i=e.i(416340),a=e.i(135205),o=e.i(425277),r=e.i(457323);function s(e){let t=(0,r.useConstant)(()=>(0,a.motionValue)(e)),{isStatic:n}=(0,i.useContext)(o.MotionConfigContext);if(n){let[,n]=(0,i.useState)(e);(0,i.useEffect)(()=>t.on("change",n),[])}return t}e.s(["useMotionValue",0,s],583896);var l=e.i(191163),d=e.i(638863),c=e.i(52967),_=e.i(818155);function u(e){return"number"==typeof e?e:parseFloat(e)}function p(e,t={}){let{isStatic:n}=(0,i.useContext)(o.MotionConfigContext),a=(0,i.useRef)(null),r=s((0,c.isMotionValue)(e)?u(e.get()):e),m=(0,i.useRef)(r.get()),f=(0,i.useRef)(()=>{}),b=()=>{let e=a.current;e&&0===e.time&&e.sample(_.frameData.delta),E(),a.current=(0,l.animateValue)({keyframes:[r.get(),m.current],velocity:r.getVelocity(),type:"spring",restDelta:.001,restSpeed:.01,...t,onUpdate:f.current})},E=()=>{a.current&&a.current.stop()};return(0,i.useInsertionEffect)(()=>r.attach((e,t)=>n?t(e):(m.current=e,f.current=t,_.frame.update(b),r.get()),E),[JSON.stringify(t)]),(0,d.useIsomorphicLayoutEffect)(()=>{if((0,c.isMotionValue)(e))return e.on("change",e=>r.set(u(e)))},[r]),r}var m=e.i(843778);let f=(0,i.memo)(({size:e=24,loading:a=!1,className:o,allowHoverEffect:r=!1})=>{let l=Math.max(1.5,e/46),d=(0,i.useRef)(null),[c,_]=(0,i.useState)(!1),u=s(0),f=s(0),b=p(u,{stiffness:300,damping:30}),E=p(f,{stiffness:300,damping:30});return(0,t.jsxs)("div",{className:(0,m.cn)("text-brand-600 flex justify-center items-center relative",o),style:{width:e,height:e,position:"relative"},children:[(0,t.jsx)("div",{ref:d,className:"absolute flex items-center justify-center",style:{width:2*e,height:2*e,left:-e/2,top:-e/2},onMouseMove:e=>{if(!r||!d.current)return;let t=d.current.getBoundingClientRect(),n=t.left+t.width/2,i=t.top+t.height/2,a=e.clientX-n,o=e.clientY-i;u.set(a/5),f.set(o/5)},onMouseEnter:()=>_(!0),onMouseLeave:()=>{_(!1),u.set(0),f.set(0)}}),(0,t.jsxs)(n.motion.svg,{width:e,height:e,viewBox:"0 0 46 46",fill:"none",xmlns:"http://www.w3.org/2000/svg",children:[(0,t.jsx)(n.motion.path,{fillRule:"evenodd",clipRule:"evenodd",d:"M23 1.78677L44.2132 23L23 44.2132L1.7868 23L23 1.78677ZM23 0.372559L23.7071 1.07967L44.9203 22.2929L45.6274 23L44.9203 23.7071L23.7071 44.9203L23 45.6274L22.2929 44.9203L1.07969 23.7071L0.372583 23L1.07969 22.2929L22.2929 1.07967L23 0.372559Z",fill:"none",stroke:"currentColor",strokeWidth:l,initial:{rotate:0},animate:a?{rotate:360}:{rotate:10*!!c},transition:a?{type:"spring",stiffness:60,damping:10,repeat:1/0,repeatType:"loop"}:{type:"spring",stiffness:300,damping:30},style:{transformBox:"view-box",transformOrigin:"center"}}),(0,t.jsx)(n.motion.path,{fillRule:"evenodd",clipRule:"evenodd",d:"M30 23C30 26.866 26.866 30 23 30C19.134 30 16 26.866 16 23C16 19.134 19.134 16 23 16C26.866 16 30 19.134 30 23ZM31 23C31 27.4183 27.4183 31 23 31C18.5817 31 15 27.4183 15 23C15 18.5817 18.5817 15 23 15C27.4183 15 31 18.5817 31 23Z",fill:"none",stroke:"currentColor",strokeWidth:l,initial:{scale:1},animate:a?{scale:[1,1.1,1]}:{scale:c?1.1:1},style:{x:b,y:E,transformBox:"view-box",transformOrigin:"center"},transition:a?{duration:2,repeat:1/0,ease:"easeInOut",repeatType:"loop"}:{type:"spring",stiffness:300,damping:30}})]})]})});e.s(["AiIconAnimation",0,f],602089)},790792,e=>{"use strict";let t=(0,e.i(679709).default)("Table2",[["path",{d:"M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18",key:"gugj83"}]]);e.s(["Table2",0,t],790792)},40586,645451,e=>{"use strict";let t=(0,e.i(679709).default)("GitBranch",[["line",{x1:"6",x2:"6",y1:"3",y2:"15",key:"17qcm7"}],["circle",{cx:"18",cy:"6",r:"3",key:"1h7g24"}],["circle",{cx:"6",cy:"18",r:"3",key:"fqmcym"}],["path",{d:"M18 9a9 9 0 0 1-9 9",key:"n2h4wq"}]]);e.s(["default",0,t],645451),e.s(["GitBranch",0,t],40586)},906766,e=>{"use strict";let t=(0,e.i(679709).default)("MessageSquare",[["path",{d:"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",key:"1lielz"}]]);e.s(["MessageSquare",0,t],906766)},181431,e=>{"use strict";let t=(0,e.i(679709).default)("Link",[["path",{d:"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",key:"1cjeqo"}],["path",{d:"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",key:"19qd67"}]]);e.s(["Link",0,t],181431)},613923,(e,t,n)=>{t.exports=e.r(798119)},636047,726973,3694,859791,623705,e=>{"use strict";var t,n=e.i(221628),i=e.i(988829),a=e.i(934806),o=e.i(827157),r=e.i(608793),s=e.i(302016),l=e.i(613923);function d(e,t){let n,d;return(n=s.default.env.NEXT_PHASE===l.PHASE_PRODUCTION_BUILD,(d=!!t&&function(e){if(e.$$typeof!==Symbol.for("react.server.reference"))return!1;let{type:t}=function(e){let t=parseInt(e.slice(0,2),16),n=t>>1&63,i=Array(6);for(let e=0;e<6;e++){let t=n>>5-e&1;i[e]=1===t}return{type:1==(t>>7&1)?"use-cache":"server-action",usedArgs:i,hasRestArgs:1==(1&t)}}(e.$$id);return"use-cache"===t}(t))&&r.DEBUG_BUILD&&a.debug.log("Skipping span creation in Cache Components context"),n||d)?t(new o.SentryNonRecordingSpan({traceId:"00000000000000000000000000000000",spanId:"0000000000000000"})):(0,i.startSpan)(e,t)}e.s(["startSpan",0,d],726973),e.i(128328);var c=e.i(298650),_=e.i(416340),u=e.i(801026),p=e.i(813663),m=((t={}).EDIT_CELL_CONTENT="edit_cell_content",t.ADD_ROW="add_row",t.DELETE_ROW="delete_row",t);function f(e){return"delete_row"===e.type}function b(e){return"edit_cell_content"===e.type}e.s(["QueuedOperationType",()=>m,"isAddRowOperation",0,function(e){return"add_row"===e.type},"isDeleteRowOperation",0,f,"isEditCellContentOperation",0,b],3694);var E=e.i(824183);function y(e){return"__tempId"in e&&"string"==typeof e.__tempId}e.s(["isPendingAddRow",0,y,"isPendingDeleteRow",0,function(e){return"__isDeleted"in e&&!0===e.__isDeleted}],859791);var g=e.i(962217),h=e.i(48189);let T="__originalRowIdentifiers";function R(e,t){let n=e[T];return{...(0,h.isObject)(n)?n:t}}function I(e,t){return{...e,[T]:{...t}}}function w(e){if(e.type===m.EDIT_CELL_CONTENT){let{columnName:t,rowIdentifiers:n}=e.payload,i=Object.entries(n).sort(([e],[t])=>e.localeCompare(t)).map(([e,t])=>`${e}:${t}`).join("|");return`${e.type}:${e.tableId}:${t}:${i}`}if(e.type===m.ADD_ROW)return`${e.type}:${e.tableId}:${e.payload.tempId}`;if(e.type===m.DELETE_ROW){let{rowIdentifiers:t}=e.payload,n=Object.entries(t).sort(([e],[t])=>e.localeCompare(t)).map(([e,t])=>`${e}:${t}`).join("|");return`${e.type}:${e.tableId}:${n}`}throw Error(`Unknown operation type: ${e.type}`)}function S(e,t){let n=Object.entries(t);return 0!==n.length&&n.every(([t,n])=>e[t]===n)}function j(e,t){let n=e[T];return S((0,h.isObject)(n)?n:e,t)}e.s(["formatGridDataWithOperationValues",0,({operations:e,rows:t})=>{let n=t.slice();return e.forEach(e=>{if(e.type===m.EDIT_CELL_CONTENT){let{rowIdentifiers:t,columnName:i,newValue:a}=e.payload,o=n.findIndex(e=>j(e,t));-1!==o&&(n[o]=I({...n[o],[i]:a},t))}else if(e.type===m.ADD_ROW){let{tempId:t,rowData:i}=e.payload,a=Number(t),o=n.findIndex(e=>y(e)&&e.__tempId===t);if(o>=0)n[o]={...n[o],...i,__tempId:t};else{let e={...i,idx:a,__tempId:t};n.unshift(e)}}else if(e.type===m.DELETE_ROW){let{rowIdentifiers:t}=e.payload,i=n.findIndex(e=>j(e,t));-1!==i&&(n[i]=I({...n[i],__isDeleted:!0},t))}}),n},"generateTableChangeKey",0,w,"getStableRowIdentifiers",0,R,"queueCellEditWithOptimisticUpdate",0,function({queueOperation:e,tableId:t,table:n,row:i,rowIdentifiers:a,columnName:o,oldValue:r,newValue:s,enumArrayColumns:l}){let d=R(i,a);y(i)&&(d.__tempId=i.__tempId),e({type:m.EDIT_CELL_CONTENT,tableId:t,payload:{rowIdentifiers:d,columnName:o,oldValue:r,newValue:s,table:n,enumArrayColumns:l}})},"queueRowAddWithOptimisticUpdate",0,function({queueOperation:e,tableId:t,table:n,rowData:i,enumArrayColumns:a}){let o=String(-Date.now());e({type:m.ADD_ROW,tableId:t,payload:{tempId:o,rowData:i,table:n,enumArrayColumns:a}})},"queueRowDeletesWithOptimisticUpdate",0,function({rows:e,table:t,queueOperation:n,projectRef:i}){if(!i)return void console.error("Cannot queue row deletes: projectRef is required");if(!(0,g.isTableLike)(t))return void console.error("Cannot queue row deletes: table must be a TableLike entity");if(0===t.primary_keys.length)return void console.error("Cannot queue row deletes: table has no primary keys");for(let i of e){let e={};t.primary_keys.forEach(t=>{e[t.name]=i[t.name]});let a=R(i,e);y(i)&&(a.__tempId=i.__tempId),n({type:m.DELETE_ROW,tableId:t.id,payload:{rowIdentifiers:a,originalRow:i,table:t}})}},"rowMatchesIdentifiers",0,S],623705);let N=()=>{let e=(0,u.proxy)({rowsPerPage:100,setRowsPerPage:t=>{e.rowsPerPage=t},ui:{open:"none"},get sidePanel(){return"side-panel"===e.ui.open?e.ui.sidePanel:void 0},get confirmationDialog(){return"confirmation-dialog"===e.ui.open?e.ui.confirmationDialog:void 0},closeSidePanel:()=>{e.ui={open:"none"}},closeConfirmationDialog:()=>{e.ui={open:"none"}},onAddSchema:()=>{e.ui={open:"side-panel",sidePanel:{type:"schema",mode:"new"}}},onAddTable:t=>{d({name:"table_creator.opened",op:"ui.action"},e=>{e.setAttribute("table_creator.opened",1)}),e.ui={open:"side-panel",sidePanel:{type:"table",mode:"new",templateData:t}}},onEditTable:()=>{e.ui={open:"side-panel",sidePanel:{type:"table",mode:"edit"}}},onDuplicateTable:()=>{e.ui={open:"side-panel",sidePanel:{type:"table",mode:"duplicate"}}},onDeleteTable:()=>{e.ui={open:"confirmation-dialog",confirmationDialog:{type:"table",isDeleteWithCascade:!1}}},onDeleteView:()=>{e.ui={open:"confirmation-dialog",confirmationDialog:{type:"view",isDeleteWithCascade:!1}}},onDeleteMaterializedView:()=>{e.ui={open:"confirmation-dialog",confirmationDialog:{type:"materialized-view",isDeleteWithCascade:!1}}},onAddColumn:()=>{e.ui={open:"side-panel",sidePanel:{type:"column"}}},onEditColumn:t=>{e.ui={open:"side-panel",sidePanel:{type:"column",column:t}}},onDeleteColumn:t=>{e.ui={open:"confirmation-dialog",confirmationDialog:{type:"column",column:t,isDeleteWithCascade:!1}}},onAddRow:()=>{e.ui={open:"side-panel",sidePanel:{type:"row"}}},onEditRow:t=>{e.ui={open:"side-panel",sidePanel:{type:"row",row:t}}},onDeleteRows:(t,n={numRows:0,allRowsSelected:!1,callback:()=>{}})=>{let{numRows:i,allRowsSelected:a,callback:o}=n;e.ui={open:"confirmation-dialog",confirmationDialog:{type:"row",rows:t,numRows:i,allRowsSelected:a,callback:o}}},onExpandJSONEditor:t=>{e.ui={open:"side-panel",sidePanel:{type:"json",jsonValue:t}}},onExpandTextEditor:(t,n)=>{e.ui={open:"side-panel",sidePanel:{type:"cell",value:{column:t,row:n}}}},onEditForeignKeyColumnValue:t=>{e.ui={open:"side-panel",sidePanel:{type:"foreign-row-selector",foreignKey:t}}},onImportData:t=>{e.ui={open:"side-panel",sidePanel:{type:"csv-import",file:t}}},toggleViewOperationQueue:()=>{"side-panel"===e.ui.open&&"operation-queue"===e.ui.sidePanel.type?e.closeSidePanel():e.ui={open:"side-panel",sidePanel:{type:"operation-queue"}}},toggleConfirmationIsWithCascade:t=>{"confirmation-dialog"===e.ui.open&&("column"===e.ui.confirmationDialog.type||"table"===e.ui.confirmationDialog.type||"view"===e.ui.confirmationDialog.type||"materialized-view"===e.ui.confirmationDialog.type)&&(e.ui.confirmationDialog.isDeleteWithCascade=t??!e.ui.confirmationDialog.isDeleteWithCascade)},operationQueue:{operations:[],status:"idle"},queueOperation:t=>{let n=()=>{0===e.operationQueue.operations.length?e.operationQueue.status="idle":"idle"===e.operationQueue.status&&(e.operationQueue.status="pending")};if(t.type===m.DELETE_ROW){let i=function(e,t){let n=t.payload.rowIdentifiers,i=t.payload.originalRow;if(y(i)){let n=i.__tempId,a=w({type:m.ADD_ROW,tableId:t.tableId,payload:{tempId:n,rowData:i,table:t.payload.table}});return{action:"skip",filteredOperations:e.filter(e=>e.id!==a).filter(e=>!b(e)||e.payload.rowIdentifiers.__tempId!==n)}}return{action:"add",filteredOperations:e.filter(e=>{var i;return i=t.tableId,!(e.tableId===i&&(e.type===m.EDIT_CELL_CONTENT||e.type===m.DELETE_ROW)&&S(e.payload.rowIdentifiers,n))})}}(e.operationQueue.operations,t);if(e.operationQueue.operations=i.filteredOperations,"skip"===i.action)return void n()}if(t.type===m.EDIT_CELL_CONTENT){let i=function(e,t){let n=t.payload.rowIdentifiers;if(e.filter(f).some(e=>e.tableId===t.tableId&&Object.entries(e.payload.rowIdentifiers).every(([e,t])=>n[e]===t)))return{action:"reject",reason:"Cannot edit a cell on a row that is pending deletion. Remove the delete operation first."};let i=n.__tempId;if(i){let n=e.findIndex(e=>e.type===m.ADD_ROW&&e.tableId===t.tableId&&e.payload.tempId===i);if(n>=0){let i=[...e],a=i[n];if(a.type===m.ADD_ROW){let e={...a.payload};e.rowData={...e.rowData,[t.payload.columnName]:t.payload.newValue},i[n]={...a,payload:e,timestamp:Date.now()}}return{action:"merge",updatedOperations:i}}}return{action:"add"}}(e.operationQueue.operations,t);if("reject"===i.action)return void console.warn(i.reason);if("merge"===i.action){e.operationQueue.operations=i.updatedOperations,n();return}}let{operations:i}=function(e,t){let n=w(t),i=e.findIndex(e=>e.id===n),a={...t,id:n,timestamp:Date.now()};if(i>=0){let t=[...e],n=e[i];if(a.type===m.EDIT_CELL_CONTENT&&n.type===m.EDIT_CELL_CONTENT){a.payload.oldValue=n.payload.oldValue;let{oldValue:e,newValue:o}=a.payload;if("number"==typeof e&&Number(e)===Number(o)||"object"==typeof o&&(0,E.default)((0,h.tryParseJson)(e),o)||e===o)return t.splice(i,1),{operations:t}}return t[i]=a,{operations:t}}return{operations:[...e,a]}}(e.operationQueue.operations,t);e.operationQueue.operations=i,n()},clearQueue:()=>{e.operationQueue.operations=[],e.operationQueue.status="idle"},removeOperation:t=>{e.operationQueue.operations=e.operationQueue.operations.filter(e=>e.id!==t),0===e.operationQueue.operations.length&&(e.operationQueue.status="idle")},undoLatestOperation:()=>{e.operationQueue.operations=e.operationQueue.operations.slice(0,-1),0===e.operationQueue.operations.length&&(e.operationQueue.status="idle")},setQueueStatus:t=>{e.operationQueue.status=t},get hasPendingOperations(){return e.operationQueue.operations.length>0},hasPendingCellChange:(t,n,i)=>{let a=w({type:m.EDIT_CELL_CONTENT,tableId:t,payload:{columnName:i,rowIdentifiers:n}});return e.operationQueue.operations.some(e=>e.id===a)},tablesToIgnorePreflightCheck:[],setTableToIgnorePreflightCheck:t=>{let n=new Set(e.tablesToIgnorePreflightCheck);n.add(t),e.tablesToIgnorePreflightCheck=[...n]}});return e},D=(0,_.createContext)(N());e.s(["TABLE_EDITOR_DEFAULT_ROWS_PER_PAGE",0,100,"TableEditorStateContext",0,D,"TableEditorStateContextProvider",0,({children:e})=>{let t=(0,c.useConstant)(N);return(0,n.jsx)(D.Provider,{value:t,children:e})},"useTableEditorStateSnapshot",0,e=>{let t=(0,_.useContext)(D);return(0,p.useSnapshot)(t,e)}],636047)}]);
+
+//# debugId=25f61932-aaec-0bcb-c018-5c1f63fcb37f

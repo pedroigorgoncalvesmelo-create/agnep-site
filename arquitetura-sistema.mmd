@@ -1,0 +1,33 @@
+flowchart TB
+    subgraph VISITOR["👥 Visitante (qualquer pessoa, sem login)"]
+        direction LR
+        VP["Navegador<br/>Celular ou PC"]
+    end
+
+    subgraph ADMINUSER["🔑 Administrador<br/>pedroigorgoncalvesmelo@gmail.com"]
+        direction LR
+        AP["Navegador<br/>/auth → login → painel"]
+    end
+
+    subgraph SITE["🌐 Site AGNEP<br/>React 19 + TanStack Start + Vite + Tailwind"]
+        direction LR
+        PUB["Páginas públicas<br/>/, /sobre, /eventos,<br/>/resultados, /galeria-fotos,<br/>/galeria-videos, /documentos,<br/>/patrocinadores, /contato"]
+        AUTH["Área restrita /admin<br/>Início, Textos, Galeria,<br/>Eventos, Resultados,<br/>Vídeos, Equipe,<br/>Patrocinadores, Documentos"]
+        UI["Header + Rodapé<br/>Logo AGNEP + Splash<br/>de carregamento"]
+    end
+
+    subgraph SUPA["☁️ Supabase (nuvem)"]
+        direction LR
+        AUT["Autenticação<br/>Login, sessão, senha"]
+        DB["Banco PostgreSQL<br/>+ RLS (travas por linha)"]
+        ST["Storage 'galeria'<br/>Fotos e arquivos"]
+    end
+
+    VP -->|"HTTPS ve o site"| PUB
+    AP -->|"login obrigatorio"| AUTH
+    PUB -->|"ler tabelas publicas"| DB
+    PUB -->|"ver imagens"| ST
+    AUTH -->|"editar com role admin"| DB
+    AUTH -->|"enviar fotos"| ST
+    DB -->|"confirmar login"| AUT
+    ST -->|"so autenticado envia"| AUT

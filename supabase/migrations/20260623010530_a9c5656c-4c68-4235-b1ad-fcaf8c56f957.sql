@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.handle_initial_admin() FROM PUBLIC, anon, authenticated;
