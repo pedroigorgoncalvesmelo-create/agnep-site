@@ -1,6 +1,6 @@
 {
   "framework": "vite",
-  "buildCommand": "vite build",
+  "buildCommand": "vite build && node scripts/gen-static-index.mjs",
   "outputDirectory": "dist/client",
   "installCommand": "npm install",
   "devCommand": "vite dev --port $PORT",
