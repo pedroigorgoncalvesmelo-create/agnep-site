@@ -7,6 +7,8 @@
   Novidades desta versão:
   - Data de término opcional (data_fim) para campeonatos de vários dias.
   - Upload de arquivo PDF direto do computador (bucket "documentos" do Supabase Storage).
+  - Upload de folder/cartaz do evento direto do computador (bucket "galeria"),
+    armazenado em imagem_url (mantém compatibilidade com URL externa).
   - Comentários em português para explicar o que cada parte faz.
 */
 
@@ -47,6 +49,10 @@ type FormState = {
   pdf_file: File | null;
   pdf_nome: string;
   pdf_url: string;
+  /* Novos campos do folder/cartaz do torneio (imagem do computador): */
+  folder_file: File | null; // arquivo de imagem selecionado, pronto para upload
+  folder_nome: string; // nome exibido como feedback na interface
+  folder_url: string; // path já salvo no bucket "galeria" (em edições)
 };
 
 /* Valores padrão para o formulário de evento.
@@ -65,6 +71,9 @@ const EMPTY: FormState = {
   pdf_file: null,
   pdf_nome: "",
   pdf_url: "",
+  folder_file: null,
+  folder_nome: "",
+  folder_url: "",
 };
 
 /* Converte uma string ISO (UTC) para o formato aceito pelo input type="datetime-local".
@@ -118,6 +127,8 @@ function AdminEventos() {
     setError(null);
     const el = document.getElementById("evento-pdf") as HTMLInputElement | null;
     if (el) el.value = "";
+    const fl = document.getElementById("evento-folder") as HTMLInputElement | null;
+    if (fl) fl.value = "";
   }
 
   /* Preenche o formulário com os valores do evento selecionado para editar.
@@ -139,6 +150,9 @@ function AdminEventos() {
       pdf_file: null,
       pdf_nome: "",
       pdf_url: e.pdf_url ?? "",
+      folder_file: null,
+      folder_nome: "",
+      folder_url: e.imagem_url?.startsWith("http") ? "" : (e.imagem_url ?? ""),
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -157,6 +171,7 @@ function AdminEventos() {
     setError(null);
 
     let pdfPath: string | null = null;
+    let folderPath: string | null = null;
     try {
       /* Se o admin escolheu um arquivo PDF no computador, envia ao Storage */
       if (form.pdf_file) {
@@ -164,6 +179,13 @@ function AdminEventos() {
       } else if (form.pdf_url) {
         /* Mantém o PDF que já estava vinculado ao evento (em edições) */
         pdfPath = form.pdf_url;
+      }
+      /* Se o admin escolheu um folder/cartaz no computador, envia ao bucket "galeria" */
+      if (form.folder_file) {
+        folderPath = await uploadFile("galeria", form.folder_file);
+      } else if (form.folder_url) {
+        /* Mantém o folder que já estava vinculado ao evento (em edições) */
+        folderPath = form.folder_url;
       }
     } catch (e: any) {
       setSaving(false);
@@ -182,7 +204,7 @@ function AdminEventos() {
       local: form.local || null,
       cidade: form.cidade || null,
       link_inscricao: form.link_inscricao || null,
-      imagem_url: form.imagem_url || null,
+      imagem_url: folderPath || form.imagem_url || null,
       destaque: form.destaque,
       // caminho do PDF no bucket "documentos" (ou null se não houver)
       pdf_url: pdfPath,
@@ -353,6 +375,35 @@ function AdminEventos() {
               {form.pdf_url
                 ? "✓ PDF do evento definido."
                 : `Arquivo selecionado: ${form.pdf_nome} (será enviado ao clicar em Cadastrar)`}
+            </p>
+          )}
+        </Field>
+
+        {/*
+          Folder / cartaz do torneio (opcional):
+          Muitos campeonatos são divulgados por folders ou cartazes em imagem.
+          Este campo permite escolher a imagem direto do computador.
+          A imagem vai para o bucket "galeria" do Supabase Storage (mesmas
+          permissões da galeria de fotos) e o caminho é salvo em imagem_url.
+          Se houver um folder selecionado, ele PREVALECE sobre a "Imagem (URL)"
+          acima (que continua funcionando para imagens de links externos).
+        */}
+        <Field label="Folder / cartaz do evento (imagem do computador, opcional)" className="md:col-span-2">
+          <input
+            id="evento-folder"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setForm({ ...form, folder_file: f, folder_nome: f?.name ?? "" });
+            }}
+            className={inputCls}
+          />
+          {(form.folder_url || form.folder_nome) && (
+            <p className="mt-2 text-xs text-emerald-300">
+              {form.folder_url
+                ? "✓ Folder do evento definido."
+                : `Imagem selecionada: ${form.folder_nome} (será enviada ao clicar em Cadastrar)`}
             </p>
           )}
         </Field>
