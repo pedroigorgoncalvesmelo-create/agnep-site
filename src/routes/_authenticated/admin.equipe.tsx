@@ -28,6 +28,7 @@ type Evento = Database["public"]["Tables"]["eventos"]["Row"];
 // Tipo para a enumeração de modalidade definida no banco
 type Modalidade = Database["public"]["Enums"]["modalidade"];
 
+
 /*
   Estado estendido do formulário (campos que NÃO vão direto para o banco):
   - data_fim: data/hora de término do evento (opcional)
