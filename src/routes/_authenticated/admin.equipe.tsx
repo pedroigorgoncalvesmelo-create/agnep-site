@@ -10,6 +10,7 @@
   - Comentários em português para explicar o que cada parte faz.
 */
 
+
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
