@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 // Componentes e integrações do projeto
 import { PageHeader } from "@/components/page-header";
 import { supabase } from "@/integrations/supabase/client";
+import { getSignedUrl } from "@/lib/storage";
 import type { Database } from "@/integrations/supabase/types";
 
 // Define a rota de página usando a API do react-router do projeto
@@ -54,6 +55,23 @@ const MODALITIES = [
    Retorna dia, mês (abreviado e maiúsculo), ano e hora formatada.
    Usamos localização "pt-BR" para formato brasileiro.
 */
+function formatFullDate(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/* Abre o PDF do evento em nova aba via URL assinada do Storage.
+   Usamos URL assinada (temporária) para não deixar o arquivo público. */
+async function openPdf(pdfUrl: string) {
+  const url = await getSignedUrl("documentos", pdfUrl);
+  if (url) window.open(url, "_blank");
+}
+
 function formatDateParts(iso: string) {
   const d = new Date(iso);
   return {
@@ -249,6 +267,7 @@ function Eventos() {
                 // Mapeia eventos filtrados para itens da lista
                 filtered.map((e) => {
                   const d = formatDateParts(e.data_evento);
+                  const pdfUrl = e.pdf_url;
                   return (
                     <li key={e.id} className="grid gap-6 p-6 md:grid-cols-[120px_1fr] md:p-8">
                       {/* Coluna com data destacada */}
@@ -277,6 +296,13 @@ function Eventos() {
 
                         <h3 className="heading-display text-2xl">{e.titulo}</h3>
 
+                        {/* Data de início e, se houver, período com data de término.
+                            Campeonatos de vários dias aparecem como "de ... até ...". */}
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Início: {formatFullDate(e.data_evento)}
+                          {e.data_fim ? ` — Término: ${formatFullDate(e.data_fim)}` : ""}
+                        </p>
+
                         {/* Local e cidade, se presentes */}
                         {(e.local || e.cidade) && (
                           <p className="mt-1 text-sm text-muted-foreground">
@@ -287,7 +313,17 @@ function Eventos() {
                         {/* Descrição curta do evento */}
                         {e.descricao && <p className="mt-3 text-sm">{e.descricao}</p>}
 
-                        {/* Link externo para inscrições, quando disponível */}
+                        {/* Botões de ação: PDF do evento (se anexado) e link de inscrição */}
+                        <div className="mt-4 flex flex-wrap gap-3">
+                        {pdfUrl && (
+                          <button
+                            type="button"
+                            onClick={() => openPdf(pdfUrl)}
+                            className="inline-block border border-primary px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-primary hover:bg-primary/10"
+                          >
+                            PDF do evento
+                          </button>
+                        )}
                         {e.link_inscricao && (
                           <a
                             href={e.link_inscricao}
@@ -298,6 +334,7 @@ function Eventos() {
                             Inscreva-se →
                           </a>
                         )}
+                        </div>
                       </div>
                     </li>
                   );
