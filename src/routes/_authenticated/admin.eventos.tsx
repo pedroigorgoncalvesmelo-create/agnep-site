@@ -4,13 +4,17 @@
   - Rota administrativa para gerenciar eventos do site AGNEP.
   - Fornece CRUD básico (listar, criar, editar, apagar) usando Supabase.
   - Contém formulário controlado para criar/editar eventos e lista de eventos cadastrados.
-  - Comentários adicionados para explicar o que cada parte faz e por que é necessária.
+  Novidades desta versão:
+  - Data de término opcional (data_fim) para campeonatos de vários dias.
+  - Upload de arquivo PDF direto do computador (bucket "documentos" do Supabase Storage).
+  - Comentários em português para explicar o que cada parte faz.
 */
 
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { uploadFile, getSignedUrl } from "@/lib/storage";
 import { enviarAvisoConteudoNovoFn } from "@/lib/enviar-aviso.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/eventos")({
@@ -22,18 +26,45 @@ type Evento = Database["public"]["Tables"]["eventos"]["Row"];
 // Tipo para a enumeração de modalidade definida no banco
 type Modalidade = Database["public"]["Enums"]["modalidade"];
 
+/*
+  Estado estendido do formulário (campos que NÃO vão direto para o banco):
+  - data_fim: data/hora de término do evento (opcional)
+  - pdf_file: o arquivo PDF selecionado no computador (File), pronto para upload
+  - pdf_nome: nome do arquivo exibido na interface como feedback
+  - pdf_url: path do PDF já salvo no bucket "documentos" (quando editando um evento com PDF)
+*/
+type FormState = {
+  titulo: string;
+  descricao: string;
+  modalidade: Modalidade;
+  data_evento: string;
+  data_fim: string;
+  local: string;
+  cidade: string;
+  link_inscricao: string;
+  imagem_url: string;
+  destaque: boolean;
+  pdf_file: File | null;
+  pdf_nome: string;
+  pdf_url: string;
+};
+
 /* Valores padrão para o formulário de evento.
    Usado tanto para limpeza quanto para inicialização do estado do formulário. */
-const EMPTY = {
+const EMPTY: FormState = {
   titulo: "",
   descricao: "",
   modalidade: "geral" as Modalidade,
   data_evento: "",
+  data_fim: "",
   local: "",
   cidade: "",
   link_inscricao: "",
   imagem_url: "",
   destaque: false,
+  pdf_file: null,
+  pdf_nome: "",
+  pdf_url: "",
 };
 
 /* Converte uma string ISO (UTC) para o formato aceito pelo input type="datetime-local".
@@ -54,7 +85,7 @@ function AdminEventos() {
   // Indica se a lista está sendo carregada
   const [loading, setLoading] = useState(true);
   // Estado do formulário (campos controlados)
-  const [form, setForm] = useState({ ...EMPTY });
+  const [form, setForm] = useState<FormState>({ ...EMPTY });
   // ID do evento que está sendo editado (null quando criando novo)
   const [editingId, setEditingId] = useState<string | null>(null);
   // Indica que uma ação de salvamento está em progresso
@@ -85,6 +116,8 @@ function AdminEventos() {
     setForm({ ...EMPTY });
     setEditingId(null);
     setError(null);
+    const el = document.getElementById("evento-pdf") as HTMLInputElement | null;
+    if (el) el.value = "";
   }
 
   /* Preenche o formulário com os valores do evento selecionado para editar.
@@ -97,34 +130,62 @@ function AdminEventos() {
       descricao: e.descricao ?? "",
       modalidade: e.modalidade,
       data_evento: toLocalInput(e.data_evento),
+      data_fim: e.data_fim ? toLocalInput(e.data_fim) : "",
       local: e.local ?? "",
       cidade: e.cidade ?? "",
       link_inscricao: e.link_inscricao ?? "",
       imagem_url: e.imagem_url ?? "",
       destaque: e.destaque,
+      pdf_file: null,
+      pdf_nome: "",
+      pdf_url: e.pdf_url ?? "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   /* Handler de envio do formulário.
-     - Converte os campos do formulário para o payload esperado pelo banco.
-     - Se editingId estiver setado, atualiza; caso contrário, insere novo registro.
-     - Tratar erros e recarregar a lista ao final. */
+     O QUE:
+      - Se houver um arquivo PDF selecionado, faz o upload para o bucket "documentos".
+      - Monta o payload com os campos do formulário (data_fim é opcional).
+      - Se editingId estiver setado, atualiza; caso contrário, insere novo registro.
+     POR QUE:
+      - Separar o upload do PDF da gravação no banco evita registros inconsistentes.
+      - A data de término opcional permite campeonatos de vários dias. */
   async function save(ev: React.FormEvent) {
     ev.preventDefault();
     setSaving(true);
     setError(null);
+
+    let pdfPath: string | null = null;
+    try {
+      /* Se o admin escolheu um arquivo PDF no computador, envia ao Storage */
+      if (form.pdf_file) {
+        pdfPath = await uploadFile("documentos", form.pdf_file);
+      } else if (form.pdf_url) {
+        /* Mantém o PDF que já estava vinculado ao evento (em edições) */
+        pdfPath = form.pdf_url;
+      }
+    } catch (e: any) {
+      setSaving(false);
+      setError(e.message);
+      return;
+    }
+
     const payload = {
       titulo: form.titulo,
       descricao: form.descricao || null,
       modalidade: form.modalidade,
       // converte o valor do input local para ISO (UTC) para armazenar no banco
       data_evento: new Date(form.data_evento).toISOString(),
+      // data de término é OPCIONAL: só envia se o campo foi preenchido
+      data_fim: form.data_fim ? new Date(form.data_fim).toISOString() : null,
       local: form.local || null,
       cidade: form.cidade || null,
       link_inscricao: form.link_inscricao || null,
       imagem_url: form.imagem_url || null,
       destaque: form.destaque,
+      // caminho do PDF no bucket "documentos" (ou null se não houver)
+      pdf_url: pdfPath,
     };
     const res = editingId
       ? await supabase.from("eventos").update(payload).eq("id", editingId)
@@ -203,12 +264,31 @@ function AdminEventos() {
           </select>
         </Field>
 
-        <Field label="Data e hora *">
+        {/*
+          Data e hora de INÍCIO do evento (obrigatória).
+          Input datetime-local: abre o calendário/relógio do navegador.
+        */}
+        <Field label="Data e hora de início *">
           <input
             type="datetime-local"
             required
             value={form.data_evento}
             onChange={(e) => setForm({ ...form, data_evento: e.target.value })}
+            className={inputCls}
+          />
+        </Field>
+
+        {/*
+          Data e hora de TÉRMINO do evento (opcional):
+          Útil para campeonatos que duram vários dias.
+          Se deixado vazio, o evento é tratado como de um único dia
+          na página pública (aparece só a data de início).
+        */}
+        <Field label="Data e hora de término (opcional)">
+          <input
+            type="datetime-local"
+            value={form.data_fim}
+            onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
             className={inputCls}
           />
         </Field>
@@ -247,6 +327,34 @@ function AdminEventos() {
             className={inputCls}
             placeholder="https://..."
           />
+        </Field>
+
+        {/*
+          Arquivo PDF do evento (opcional):
+          Permite enviar o PDF direto do computador (ex.: regulamento,
+          tabela do campeonato) em vez de apenas um link externo.
+          O arquivo vai para o bucket "documentos" do Supabase Storage.
+          Quando estamos editando um evento que já tem PDF, mostramos
+          "✓ PDF do evento definido." como feedback.
+        */}
+        <Field label="Arquivo PDF do evento (opcional)" className="md:col-span-2">
+          <input
+            id="evento-pdf"
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setForm({ ...form, pdf_file: f, pdf_nome: f?.name ?? "" });
+            }}
+            className={inputCls}
+          />
+          {(form.pdf_url || form.pdf_nome) && (
+            <p className="mt-2 text-xs text-emerald-300">
+              {form.pdf_url
+                ? "✓ PDF do evento definido."
+                : `Arquivo selecionado: ${form.pdf_nome} (será enviado ao clicar em Cadastrar)`}
+            </p>
+          )}
         </Field>
 
         <Field label="Descrição" className="md:col-span-2">
@@ -313,6 +421,9 @@ function AdminEventos() {
                     )}
                     <span className="text-muted-foreground">
                       {new Date(e.data_evento).toLocaleString("pt-BR")}
+                      {e.data_fim
+                        ? ` até ${new Date(e.data_fim).toLocaleString("pt-BR")}`
+                        : ""}
                     </span>
                   </div>
                   <p className="mt-1 font-semibold">{e.titulo}</p>
