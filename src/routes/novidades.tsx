@@ -152,9 +152,19 @@ function NovidadesPage() {
         {loading ? (
           <p className="py-16 text-center text-slate-400">Carregando publicações...</p>
         ) : novidades.length === 0 ? (
-          <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-12 text-center">
-            <p className="text-lg text-slate-400">Ainda não há publicações por aqui.</p>
-            <p className="mt-2 text-slate-500">Inscreva-se acima para ser avisado assim que publicarmos algo novo!</p>
+          /*
+            Estado vazio: em vez do retângulo cinza, exibe um botão amarelo
+            centralizado "Instagram" que leva direto ao perfil da AGNEP.
+          */
+          <div className="flex justify-center py-12">
+            <a
+              href="https://www.instagram.com/agnep_?igsh=MXVqbjQxbjlla3F5aw=="
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 px-12 py-5 text-center font-bold text-slate-900 shadow-2xl transition-all duration-300 hover:scale-105 hover:from-amber-400 hover:to-amber-300 hover:shadow-amber-400/30"
+            >
+              Instagram
+            </a>
           </div>
         ) : (
           <div className="space-y-6">
