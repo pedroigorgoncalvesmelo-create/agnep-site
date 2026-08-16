@@ -130,6 +130,17 @@ export function SiteFooter() {
           {/* Ano é gerado dinamicamente para não precisar atualizar manualmente a cada ano */}
           <span>© {new Date().getFullYear()} AGNEP. Todos os direitos reservados.</span>
           <span>Transformando campeões no esporte e na vida</span>
+                  {/* Crédito do desenvolvedor: link para o Instagram pessoal do Pedro Igor */}
+        <a
+          href="https://www.instagram.com/pedroigorgoncalvesmelo/?utm_source=qr&igsh=MTQybzF6eGs2YnZvbQ=="
+          target="_blank"
+          rel="noopener noreferrer"
+          className="transition hover:text-primary"
+          aria-label="Instagram pessoal do desenvolvedor Pedro Igor"
+        >
+          Feito por: @pedroigorgoncalvesmelo
+        </a>
+
         </div>
       </div>
     </footer>
