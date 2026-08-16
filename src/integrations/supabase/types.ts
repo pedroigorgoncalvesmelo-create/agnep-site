@@ -131,6 +131,8 @@ export type Database = {
           cidade: string | null
           created_at: string
           data_evento: string
+          /* data_fim: término do evento (opcional, para campeonatos de vários dias) */
+          data_fim: string | null
           descricao: string | null
           destaque: boolean
           id: string
@@ -138,6 +140,8 @@ export type Database = {
           link_inscricao: string | null
           local: string | null
           modalidade: Database["public"]["Enums"]["modalidade"]
+          /* pdf_url: path do PDF anexado ao evento no bucket "documentos" */
+          pdf_url: string | null
           titulo: string
           updated_at: string
         }
@@ -145,6 +149,8 @@ export type Database = {
           cidade?: string | null
           created_at?: string
           data_evento: string
+          /* data_fim: término do evento (opcional) */
+          data_fim?: string | null
           descricao?: string | null
           destaque?: boolean
           id?: string
@@ -152,6 +158,8 @@ export type Database = {
           link_inscricao?: string | null
           local?: string | null
           modalidade?: Database["public"]["Enums"]["modalidade"]
+          /* pdf_url: path do PDF anexado ao evento no bucket "documentos" */
+          pdf_url?: string | null
           titulo: string
           updated_at?: string
         }
@@ -166,6 +174,10 @@ export type Database = {
           link_inscricao?: string | null
           local?: string | null
           modalidade?: Database["public"]["Enums"]["modalidade"]
+          /* data_fim: término do evento (opcional) */
+          data_fim?: string | null
+          /* pdf_url: path do PDF anexado ao evento no bucket "documentos" */
+          pdf_url?: string | null
           titulo?: string
           updated_at?: string
         }
