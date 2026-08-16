@@ -72,6 +72,64 @@ async function openPdf(pdfUrl: string) {
   if (url) window.open(url, "_blank");
 }
 
+/* Abre a imagem do folder/cartaz do evento em nova aba via URL assinada.
+   Se o caminho NÃO começar com http, trata como arquivo do bucket "galeria";
+   caso contrário, usa a URL externa diretamente. */
+async function openFolder(imagemUrl: string) {
+  let url = imagemUrl;
+  if (!imagemUrl.startsWith("http")) {
+    const signed = await getSignedUrl("galeria", imagemUrl);
+    if (signed) url = signed;
+    else return; // sem URL válida, não abre nada
+  }
+  window.open(url, "_blank");
+}
+
+/* Componente de prévia do folder/cartaz do torneio.
+   - Carrega a URL assinada do arquivo no bucket "galeria" ao montar.
+   - Exibe a imagem com estilo de cartaz + botão para abrir em tamanho real.
+   POR QUE separar em componente: precisa de estado próprio (a URL assinada).
+*/
+function FolderPreview({ path, titulo }: { path: string; titulo: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getSignedUrl("galeria", path, 30 * 60).then((url) => {
+      if (mounted && url) setSrc(url);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [path]);
+
+  return (
+    <div className="mt-4">
+      {src ? (
+        <button
+          type="button"
+          onClick={() => openFolder(path)}
+          className="group block w-full max-w-sm overflow-hidden ring-1 ring-border hover:ring-primary"
+          title={`Ver cartaz completo do torneio: ${titulo}`}
+          aria-label={`Abrir cartaz do torneio ${titulo}`}
+        >
+          <img
+            src={src}
+            alt={`Cartaz do torneio: ${titulo}`}
+            loading="lazy"
+            className="max-h-64 w-full object-contain bg-background transition duration-300 group-hover:brightness-110"
+          />
+          <span className="flex items-center justify-center gap-2 bg-primary/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+            Ver cartaz do torneio →
+          </span>
+        </button>
+      ) : (
+        <p className="text-xs text-muted-foreground">Carregando cartaz...</p>
+      )}
+    </div>
+  );
+}
+
 function formatDateParts(iso: string) {
   const d = new Date(iso);
   return {
@@ -268,6 +326,10 @@ function Eventos() {
                 filtered.map((e) => {
                   const d = formatDateParts(e.data_evento);
                   const pdfUrl = e.pdf_url;
+                  /* Folder/cartaz do torneio: pode ser um arquivo do bucket "galeria"
+                     (caminho interno) ou uma URL externa (https://...). */
+                  const folderPath = e.imagem_url;
+                  const isFolderExternal = folderPath ? folderPath.startsWith("http") : false;
                   return (
                     <li key={e.id} className="grid gap-6 p-6 md:grid-cols-[120px_1fr] md:p-8">
                       {/* Coluna com data destacada */}
@@ -312,6 +374,11 @@ function Eventos() {
 
                         {/* Descrição curta do evento */}
                         {e.descricao && <p className="mt-3 text-sm">{e.descricao}</p>}
+
+                        {/* Folder / cartaz do torneio (exibido como prévia quando anexado). */}
+                        {folderPath && !isFolderExternal && (
+                          <FolderPreview path={folderPath} titulo={e.titulo} />
+                        )}
 
                         {/* Botões de ação: PDF do evento (se anexado) e link de inscrição */}
                         <div className="mt-4 flex flex-wrap gap-3">
