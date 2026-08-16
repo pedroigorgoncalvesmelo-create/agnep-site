@@ -173,6 +173,7 @@ function AdminEventos() {
       setError(e.message);
       return;
     }
+    
 
     const payload = {
       titulo: form.titulo,
